@@ -130,9 +130,11 @@ jobs:
 
       - name: Prepare output directories
         run: |
-          mkdir -p ./output/thumbnails
+          # Pre-create bind-mounted dirs so they aren't created root-owned by Docker,
+          # and make them writable for a non-root user inside the container
+          mkdir -p ./output/thumbnails ./uploads ./downloads
           touch ./output/.instance
-          chmod -R 777 output
+          chmod -R 777 output uploads downloads
 
       - name: Start Docker Compose
         run: |
