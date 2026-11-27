@@ -31,8 +31,7 @@ jobs:
 
     env:
       COMPOSE_PROJECT_NAME: itest
-      # Base compose file from the app repo + a CI-only override written by the workflow
-      COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
+      COMPOSE_FILE: docker-compose.yml
 
       TARGET_URL: http://backend:8000
       COMPLETION_TIMEOUT: "3000"
@@ -118,26 +117,20 @@ jobs:
         env:
           ENV_FILE: ${{ secrets.ENV_FILE }}
 
+      - name: Start LLM Gateway
+        run: |
+          curl -fsSL# https://gitlab.haseeburrehman.com/-/snippets/27/raw/main/docker-compose.gateway.yml
+          docker compose -f docker-compose.gateway.yml up -d
+
       - name: Prepare output directories
         run: |
-          # Pre-create bind-mounted dirs so they aren't created root-owned by Docker,
-          # and make them writable for a non-root user inside the container
           mkdir -p ./output/thumbnails ./uploads ./downloads
           touch ./output/.instance
-          chmod -R 777 output uploads downloads
 
-      - name: Write CI compose override
-        run: |
-          # The backend runs without a writable home dir (/app), so libraries that create
-          # config/cache dirs there (matplotlib, etc.) fail with Errno 13. Point them at /tmp.
-          cat > docker-compose.ci.yml <<'EOF'
-          services:
-            backend:
-              environment:
-                MPLCONFIGDIR: /tmp/matplotlib
-                XDG_CONFIG_HOME: /tmp/.config
-                XDG_CACHE_HOME: /tmp/.cache
-          EOF
+          # The compose file bind-mounts the whole repo (.:/app). The checkout is owned by the
+          # runner user, so a container user with a different uid can't write anywhere under
+          # /app (uploads, .config, output...). Make the checkout writable for everyone.
+          chmod -R a+rwX .
 
       - name: Start Docker Compose
         run: |
