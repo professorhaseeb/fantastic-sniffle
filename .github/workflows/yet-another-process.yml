@@ -31,7 +31,8 @@ jobs:
 
     env:
       COMPOSE_PROJECT_NAME: itest
-      COMPOSE_FILE: docker-compose.yml
+      # Base compose file from the app repo + a CI-only override written by the workflow
+      COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
 
       TARGET_URL: http://backend:8000
       COMPLETION_TIMEOUT: "3000"
@@ -60,7 +61,7 @@ jobs:
           git -C app checkout --force FETCH_HEAD
 
           echo "Checked out $(git -C app rev-parse --short HEAD)"
-          test -f "app/${COMPOSE_FILE}" || { echo "${COMPOSE_FILE} not found in repo"; exit 1; }
+          test -f app/docker-compose.yml || { echo "docker-compose.yml not found in repo"; exit 1; }
 
       - name: Configure Docker
         run: |
@@ -124,6 +125,19 @@ jobs:
           mkdir -p ./output/thumbnails ./uploads ./downloads
           touch ./output/.instance
           chmod -R 777 output uploads downloads
+
+      - name: Write CI compose override
+        run: |
+          # The backend runs without a writable home dir (/app), so libraries that create
+          # config/cache dirs there (matplotlib, etc.) fail with Errno 13. Point them at /tmp.
+          cat > docker-compose.ci.yml <<'EOF'
+          services:
+            backend:
+              environment:
+                MPLCONFIGDIR: /tmp/matplotlib
+                XDG_CONFIG_HOME: /tmp/.config
+                XDG_CACHE_HOME: /tmp/.cache
+          EOF
 
       - name: Start Docker Compose
         run: |
