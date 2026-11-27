@@ -111,17 +111,6 @@ jobs:
           echo "DOWNLOADED_FILE=$FILE" >> "$GITHUB_ENV"
           ls -lh downloads
 
-      - name: Point POST_BODY at downloaded file
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          # Drop .url and add .file with the local path; every other field is kept as-is
-          NEW_BODY=$(echo "$POST_BODY" | jq -c --arg p "$DOWNLOADED_FILE" 'del(.url) | .file = $p')
-
-          echo "POST_BODY_FINAL=$NEW_BODY" >> "$GITHUB_ENV"
-          echo "Body to send: $NEW_BODY"
-
       - name: Prepare environment
         run: |
           printf '%s\n' "$ENV_FILE" > .env
@@ -171,11 +160,23 @@ jobs:
 
           echo "Sending POST..."
 
-          RESPONSE=$(docker run --rm --network "$NET" curlimages/curl \
+          # Multipart form: the downloaded file goes in "file"; "url" is dropped and every
+          # other key of POST_BODY becomes a plain form field (--form-string = no @ or < parsing)
+          FORM_ARGS=()
+          while IFS= read -r line; do
+            FORM_ARGS+=(--form-string "$line")
+          done < <(echo "$POST_BODY" | jq -r \
+            'to_entries[] | select(.key != "url") | "\(.key)=\(.value | tostring)"')
+
+          FILE_NAME=$(basename "$DOWNLOADED_FILE")
+
+          RESPONSE=$(docker run --rm --network "$NET" \
+            -v "$PWD/downloads:/downloads:ro" \
+            curlimages/curl \
             -sS --fail-with-body \
             -X POST "$TARGET_URL/api/process" \
-            -H "Content-Type: application/json" \
-            -d "$POST_BODY_FINAL")
+            -F "file=@\"/downloads/${FILE_NAME}\"" \
+            "${FORM_ARGS[@]}")
 
           echo "$RESPONSE"
 
