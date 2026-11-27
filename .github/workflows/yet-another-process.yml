@@ -119,8 +119,7 @@ jobs:
 
       - name: Start LLM Gateway
         run: |
-          curl -fsSL# https://gitlab.haseeburrehman.com/-/snippets/27/raw/main/docker-compose.gateway.yml
-          docker compose -f docker-compose.gateway.yml up -d
+          curl -fsSL https://gitlab.haseeburrehman.com/-/snippets/27/raw/main/docker-compose.gateway.yml | docker compose -f docker-compose.gateway.yml up -d
 
       - name: Prepare output directories
         run: |
