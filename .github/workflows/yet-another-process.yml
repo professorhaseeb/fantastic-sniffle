@@ -238,6 +238,66 @@ jobs:
             sleep 5
           done
 
+      - name: Create metadata file with clip filenames
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Clips are <stem>_clip_N.mp4 (clean reframe) and, after captions/hook,
+          # subtitled_<ts>_[hooked_<ts>_]<stem>_clip_N.mp4. N = shorts index + 1.
+          python3 - <<'PY'
+          import glob, json, os, sys
+
+          # Layout: output/<job_id>_<title>_metadata.json. The prefix
+          # "<job_id>_<title>" is also the stem of every clip of this job.
+          metas = sorted(glob.glob("output/**/*_metadata.json", recursive=True),
+                         key=os.path.getmtime)
+          if not metas:
+              print("No *_metadata.json found, nothing to update")
+              sys.exit(0)
+
+          meta_path = metas[-1]
+          base = os.path.basename(meta_path)[: -len("_metadata.json")]
+          print(f"Metadata: {meta_path} (stem: {base})")
+
+          with open(meta_path, encoding="utf-8") as f:
+              data = json.load(f)
+
+          # Index every mp4 under output/ once (clips normally sit next to the
+          # metadata, but a per-job subfolder is handled too).
+          mp4s = [p for p in glob.glob("output/**/*.mp4", recursive=True)
+                  if os.path.getsize(p) > 0]
+
+          def rel(path):
+              # relative to output/, matching the uploaded artifact layout
+              return os.path.relpath(path, "output")
+
+          found = 0
+          for i, short in enumerate(data.get("shorts", [])):
+              clean_name = f"{base}_clip_{i + 1}.mp4"
+
+              # Clean reframe: exact filename (clip_1 never matches clip_11).
+              clean = [p for p in mp4s if os.path.basename(p) == clean_name]
+              # Captioned: subtitled_<ts>_<clean>, also subtitled_<ts>_hooked_<ts>_<clean>.
+              subs = [p for p in mp4s
+                      if os.path.basename(p).startswith("subtitled_")
+                      and os.path.basename(p).endswith("_" + clean_name)]
+
+              short["clip"] = rel(max(clean, key=os.path.getmtime)) if clean else None
+              short["subtitled_clip"] = rel(max(subs, key=os.path.getmtime)) if subs else None
+              found += bool(clean or subs)
+              print(f"  short {i + 1}: clip={short['clip']} subtitled_clip={short['subtitled_clip']}")
+
+          # Write a NEW file next to the original; the original stays untouched.
+          out_path = meta_path[: -len("_metadata.json")] + "_metadata_with_clips.json"
+          tmp = out_path + ".tmp"
+          with open(tmp, "w", encoding="utf-8") as f:
+              json.dump(data, f, indent=2, ensure_ascii=False)
+          os.replace(tmp, out_path)
+          print(f"Wrote {out_path} ({found}/{len(data.get('shorts', []))} shorts have files)")
+          PY
+
       - name: Keep generated clips only
         if: always()
         run: |
