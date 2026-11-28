@@ -244,6 +244,11 @@ jobs:
         run: |
           set -euo pipefail
 
+          # The backend container writes output/<job_id>/ as root, so the runner
+          # user can read it but not create files there. Take ownership first
+          # (this also lets the later "Keep generated clips only" cleanup delete).
+          sudo chown -R "$(id -u):$(id -g)" output || sudo chmod -R a+rwX output
+
           # Clips are <stem>_clip_N.mp4 (clean reframe) and, after captions/hook,
           # subtitled_<ts>_[hooked_<ts>_]<stem>_clip_N.mp4. N = shorts index + 1.
           python3 - <<'PY'
